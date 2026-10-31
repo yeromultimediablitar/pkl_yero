@@ -612,7 +612,7 @@ function namaById(id, fb){ var s = SMAP[id]; return s ? tampilNama(s) : fb; }
 function lihatFoto(url){ $('fotoBesar').src = thumb(url, 900); new bootstrap.Modal('#mdlFoto').show(); }
 function mapLink(la, lo){ return (la !== '' && lo !== '' && la != null) ? '<a target="_blank" href="https://www.google.com/maps?q=' + esc(la) + ',' + esc(lo) + '"><i class="bi bi-geo-alt-fill"></i></a>' : '<span class="text-muted">-</span>'; }
 function badge(s){
-  var c = {'Tepat Waktu':'success','Terlambat':'warning','Sakit':'info','Izin':'secondary','Alpa':'danger','Pulang Cepat':'warning'}[s] || 'light text-dark';
+  var c = {'Tepat Waktu':'success','Terlambat':'warning','Sakit':'info','Izin':'secondary','Alpa':'danger','Pulang Cepat':'warning','Hadir':'primary','Selesai':'primary'}[s] || 'light text-dark';
   return s ? '<span class="badge bg-' + c + '">' + esc(s) + '</span>' : '';
 }
 function table(cols, rows, opt){
@@ -719,7 +719,7 @@ function loadHariIni(){
     HARI = d; $('pTgl').textContent = new Date().toLocaleDateString('id-ID', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'});
     $('jPagi').textContent = d.set.PAGI_MASUK + '–' + d.set.PAGI_PULANG;
     $('jSiang').textContent = d.set.SIANG_MASUK + '–' + d.set.SIANG_PULANG;
-    $('jLap').textContent = d.set.LAP_MASUK + '–' + d.set.LAP_PULANG;
+    $('jLap').textContent = 'Waktu fleksibel';
     var r = d.rec, st = $('pStatus'), form = $('pForm');
     FOTO = ''; SHIFT = ''; stopCam(); resetCamView();
     document.querySelectorAll('.shift-btn').forEach(function(b){ b.classList.remove('active'); b.disabled = false; });
@@ -738,11 +738,9 @@ function pilihShift(s){
   document.querySelectorAll('.shift-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.s === s); });
   setFormMode();
 }
-function setFormMode(){
-  var izin = (SHIFT === 'Sakit' || SHIFT === 'Izin');
-  $('gpsBox').classList.toggle('d-none', izin);
-  $('camBox').classList.toggle('d-none', izin);
-  if (izin) { stopCam(); }
+function setFormMode(){ // semua kategori (termasuk Sakit dan Izin) wajib lokasi dan foto
+  $('gpsBox').classList.remove('d-none');
+  $('camBox').classList.remove('d-none');
 }
 function resetCamView(){
   $('camView').innerHTML = '<div class="h-100 d-flex align-items-center justify-content-center text-white-50 small text-center p-3"><span><i class="bi bi-camera fs-1 d-block"></i>Kamera belum aktif</span></div>';
@@ -828,13 +826,11 @@ function setFoto(d){
 function kirimAbsen(btn){
   var izin = (SHIFT === 'Sakit' || SHIFT === 'Izin');
   if (!SHIFT) { toast('Pilih kategori presensi dahulu.', 'warning'); return; }
-  if (!izin) {
-    if (!GPS.ok) { toast('Lokasi GPS belum tersedia. Aktifkan izin lokasi lalu tekan "Perbarui lokasi".', 'warning'); return; }
-    if (!FOTO) { toast('Ambil foto selfie dahulu.', 'warning'); return; }
-  }
+  if (!GPS.ok) { toast('Lokasi GPS belum tersedia. Aktifkan izin lokasi lalu tekan "Perbarui lokasi".', 'warning'); return; }
+  if (!FOTO) { toast('Ambil foto selfie dahulu.', 'warning'); return; }
   if (izin && !confirm('Kirim presensi sebagai "' + SHIFT + '"?')) return;
   run(btn, function(){
-    return call('submitAbsen', {mode: MODE, shift: SHIFT, lat: GPS.lat, lon: GPS.lon, foto: izin ? '' : FOTO}).then(function(r){
+    return call('submitAbsen', {mode: MODE, shift: SHIFT, lat: GPS.lat, lon: GPS.lon, foto: FOTO}).then(function(r){
       toast('Presensi ' + MODE + ' berhasil (' + r.status + ' • ' + r.jam + ')', 'success');
       if (r.warning) toast(r.warning, 'warning');
       stopGps(); loadHariIni();
@@ -1330,9 +1326,9 @@ function loadStat(){
   call('statistik', {dari: $('aDari').value, sampai: $('aSampai').value}).then(function(r){ STAT = r.map(function(o){ o.nama = namaById(o.id, o.nama); return o; }); renderStat(); }).catch(function(e){ toast(e.message); });
 }
 function renderStat(){
-  var t = {tepat: 0, terlambat: 0, sakit: 0, izin: 0, alpa: 0};
+  var t = {tepat: 0, hadir: 0, terlambat: 0, sakit: 0, izin: 0, alpa: 0};
   STAT.forEach(function(s){ Object.keys(t).forEach(function(k){ t[k] += s[k]; }); });
-  var cards = [['Tepat Waktu', t.tepat, 'success', 'check-circle'], ['Terlambat', t.terlambat, 'warning', 'alarm'], ['Sakit', t.sakit, 'info', 'thermometer-half'], ['Izin', t.izin, 'secondary', 'envelope-paper'], ['Alpa', t.alpa, 'danger', 'x-octagon']];
+  var cards = [['Tepat Waktu', t.tepat, 'success', 'check-circle'], ['Terlambat', t.terlambat, 'warning', 'alarm'], ['Lapangan', t.hadir, 'primary', 'geo-alt'], ['Sakit', t.sakit, 'info', 'thermometer-half'], ['Izin', t.izin, 'secondary', 'envelope-paper'], ['Alpa', t.alpa, 'danger', 'x-octagon']];
   $('statCards').innerHTML = cards.map(function(c){ return '<div class="col-6 col-md"><div class="card p-3 text-center"><i class="bi bi-' + c[3] + ' fs-3 text-' + c[2] + '"></i><div class="fs-3 fw-bold">' + c[1] + '</div><div class="small text-muted">' + c[0] + '</div></div></div>'; }).join('');
   var rows = STAT.slice().sort(function(a, b){ var x = a[SORT.k], y = b[SORT.k]; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * SORT.d; });
   function th(l, k){ return l + (SORT.k === k ? (SORT.d > 0 ? ' ▲' : ' ▼') : ''); }
@@ -1340,6 +1336,7 @@ function renderStat(){
     {h: th('Siswa', 'nama'), sort: "sortStat('nama')", f: function(s){ return esc(s.nama); }},
     {h: th('Tepat', 'tepat'), sort: "sortStat('tepat')", f: function(s){ return s.tepat; }},
     {h: th('Telat', 'terlambat'), sort: "sortStat('terlambat')", f: function(s){ return s.terlambat; }},
+    {h: th('Lapangan', 'hadir'), sort: "sortStat('hadir')", f: function(s){ return s.hadir; }},
     {h: th('Sakit', 'sakit'), sort: "sortStat('sakit')", f: function(s){ return s.sakit; }},
     {h: th('Izin', 'izin'), sort: "sortStat('izin')", f: function(s){ return s.izin; }},
     {h: th('Alpa', 'alpa'), sort: "sortStat('alpa')", f: function(s){ return s.alpa; }},
@@ -1347,7 +1344,7 @@ function renderStat(){
   ], rows);
 }
 /* T6 */
-var SHIFT_F = [['PAGI_MASUK', 'Batas masuk – Kantor Pagi'], ['PAGI_PULANG', 'Jam pulang – Kantor Pagi'], ['SIANG_MASUK', 'Batas masuk – Kantor Siang'], ['SIANG_PULANG', 'Jam pulang – Kantor Siang'], ['LAP_MASUK', 'Batas masuk – Lapangan'], ['LAP_PULANG', 'Jam pulang – Lapangan']];
+var SHIFT_F = [['PAGI_MASUK', 'Batas masuk – Kantor Pagi'], ['PAGI_PULANG', 'Jam pulang – Kantor Pagi'], ['SIANG_MASUK', 'Batas masuk – Kantor Siang'], ['SIANG_PULANG', 'Jam pulang – Kantor Siang']];
 function loadShift(){
   call('getPengaturan').then(function(s){
     SEKOLAH = String(s.DAFTAR_SEKOLAH || '').split('|').filter(Boolean); renderSekolah();
