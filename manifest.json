@@ -1,7 +1,7 @@
 {
-  "name": "Sistem Manajemen PKL",
-  "short_name": "PKL",
-  "description": "Presensi, penilaian, dan pembayaran praktik kerja lapangan",
+  "name": "PKL Yero",
+  "short_name": "PKL Yero",
+  "description": "Aplikasi praktik kerja lapangan Yero Multimedia: presensi, penilaian, dan pembayaran",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

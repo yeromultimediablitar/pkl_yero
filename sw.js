@@ -1,6 +1,6 @@
 // Service worker sederhana: halaman dimuat dari jaringan lebih dulu (agar pembaruan cepat terlihat), cadangan dari cache.
 // Permintaan ke server Apps Script, Google Drive (foto), dan semua POST TIDAK pernah di-cache.
-const V = 'pkl-v1';
+const V = 'pkl-v3';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
