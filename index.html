@@ -463,6 +463,25 @@ body{word-spacing:.06em}
       <div class="small text-muted mt-2">Radius 0 = validasi jarak kantor dinonaktifkan. Berlaku untuk shift Kantor Pagi/Siang.</div>
     </div>
     <div class="card p-3 mt-3">
+      <div class="fw-bold fs-5 mb-1">Hari Kerja dan Hari Libur</div>
+      <div class="small text-muted mb-3">Pada hari libur, presensi siswa ditutup dan siswa tidak dicatat Alpa otomatis. Sesuaikan dengan kalender libur nasional dan cuti bersama Indonesia (SKB 3 Menteri). Perubahan langsung tersimpan.</div>
+      <div class="fw-semibold small mb-1">Hari kerja</div>
+      <div id="hkBox" class="mb-2"></div>
+      <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" id="swLiburAbsen" onchange="ubahBoleh(this)"><label class="form-check-label small" for="swLiburAbsen">Izinkan siswa presensi pada hari libur</label></div>
+      <div class="fw-semibold small mb-1">Tanggal libur (libur nasional, cuti bersama, atau libur khusus)</div>
+      <div class="row g-2 mb-2">
+        <div class="col-5 col-md-3"><input type="date" id="lbTgl" class="form-control"></div>
+        <div class="col-7 col-md-6"><input id="lbKet" class="form-control" maxlength="60" placeholder="Keterangan, contoh: Hari Kemerdekaan RI"></div>
+        <div class="col-12 col-md-3"><button class="btn btn-outline-primary w-100" onclick="tambahLibur(this)"><i class="bi bi-plus-lg"></i> Tambah</button></div>
+      </div>
+      <div id="lbList"></div>
+      <div class="d-flex gap-2 flex-wrap align-items-center mt-3">
+        <select id="lbTahun" class="form-select w-auto"></select>
+        <button class="btn btn-outline-secondary" onclick="previewLibur(this)"><i class="bi bi-calendar-check me-1"></i>Ambil dari Kalender Google</button>
+      </div>
+      <div id="lbPreview" class="mt-2"></div>
+    </div>
+    <div class="card p-3 mt-3">
       <div class="fw-bold fs-5 mb-1">Daftar Asal Sekolah</div>
       <div class="small text-muted mb-2">Pilihan dropdown "Asal Sekolah" di profil siswa. Perubahan langsung tersimpan.</div>
       <div class="input-group mb-2"><input id="sekolahBaru" class="form-control" maxlength="60" placeholder="Nama sekolah baru, contoh: SMKN 2 Blitar"><button class="btn btn-pri" onclick="tambahSekolah(this)"><i class="bi bi-plus-lg"></i> Tambah</button></div>
@@ -733,7 +752,11 @@ function loadHariIni(){
     FOTO = ''; SHIFT = ''; stopCam(); resetCamView();
     document.querySelectorAll('.shift-btn').forEach(function(b){ b.classList.remove('active'); b.disabled = false; });
     if (!d.aktif) { st.innerHTML = '<div class="alert alert-secondary mb-0 small">Akun Anda tidak aktif.</div>'; form.classList.add('d-none'); return; }
-    if (!r) { MODE = 'masuk'; st.innerHTML = '<span class="badge bg-secondary">Belum absen masuk</span>'; form.classList.remove('d-none'); $('pShiftBox').classList.remove('d-none'); $('btnKirimTxt').textContent = 'Kirim Absen Masuk'; setFormMode(); startGps(); return; }
+    if (!r && d.libur && !d.bolehLibur) {
+      st.innerHTML = '<div class="alert alert-info mb-0 mt-1"><i class="bi bi-calendar-heart me-1"></i><b>Hari ini libur</b><div class="small">' + esc(d.alasanLibur) + '. Presensi ditutup, dan Anda tidak dicatat Alpa.</div></div>';
+      form.classList.add('d-none'); return;
+    }
+    if (!r) { MODE = 'masuk'; st.innerHTML = '<span class="badge bg-secondary">Belum absen masuk</span>' + (d.libur ? ' <span class="badge bg-info">Libur: ' + esc(d.alasanLibur) + '</span>' : ''); form.classList.remove('d-none'); $('pShiftBox').classList.remove('d-none'); $('btnKirimTxt').textContent = 'Kirim Absen Masuk'; setFormMode(); startGps(); return; }
     var izin = (r.Shift === 'Sakit' || r.Shift === 'Izin' || r.Shift === '-');
     var info = '<div class="small">Masuk: <b>' + esc(r.Jam_Masuk || '-') + '</b> ' + badge(r.Status_Masuk) + '</div>';
     if (r.Jam_Pulang) info += '<div class="small">Pulang: <b>' + esc(r.Jam_Pulang) + '</b> ' + badge(r.Status_Pulang) + '</div>';
@@ -992,7 +1015,7 @@ function showInstrTab(t){
     if (t === '3') loadRaporTab();
     if (t === '4') { fillSiswaSelects(); loadAbsensi(); }
     if (t === '5') loadStat();
-    if (t === '6') loadShift();
+    if (t === '6') { loadShift(); loadLibur(); }
     if (t === '7') loadBayarMatriks();
   }).catch(function(e){ toast(e.message); });
 }
@@ -1367,6 +1390,66 @@ function loadShift(){
       [['DISIPLIN_POTONG_TERLAMBAT', 'Per keterlambatan (poin)'], ['DISIPLIN_POTONG_ALPA', 'Per alpa (poin)']].map(function(f){ return '<div class="col-6"><label class="small fw-semibold">' + f[1] + '</label><input type="number" min="0" max="60" data-k="' + f[0] + '" class="form-control" value="' + esc(s[f[0]]) + '"></div>'; }).join('');
   }).catch(function(e){ toast(e.message); });
 }
+var LIBUR = {hariKerja: [1, 2, 3, 4, 5], boleh: false, daftar: []}, GPREV = [];
+var NAMA_HARI = ['', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+function tglHari(t){ var m = String(t || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('id-ID', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'}) : t; }
+function loadLibur(){ call('getLibur').then(function(r){ LIBUR = r; renderLibur(); }).catch(function(e){ toast(e.message); }); }
+function renderLibur(){
+  $('hkBox').innerHTML = NAMA_HARI.slice(1).map(function(n, i){
+    var d = i + 1;
+    return '<div class="form-check form-check-inline me-3"><input class="form-check-input" type="checkbox" id="hk' + d + '"' + (LIBUR.hariKerja.indexOf(d) > -1 ? ' checked' : '') + ' onchange="ubahHariKerja()"><label class="form-check-label small" for="hk' + d + '">' + n + '</label></div>';
+  }).join('');
+  $('swLiburAbsen').checked = !!LIBUR.boleh;
+  var today = new Date(), t = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
+  $('lbList').innerHTML = LIBUR.daftar.length ? '<div class="list-group" style="max-height:280px;overflow:auto">' + LIBUR.daftar.map(function(x){
+    var lalu = x.tgl < t;
+    return '<div class="list-group-item d-flex justify-content-between align-items-center gap-2' + (lalu ? ' text-muted' : '') + '"><div><div class="fw-semibold small">' + esc(tglHari(x.tgl)) + '</div><div class="small">' + esc(x.ket) + (lalu ? '' : ' <span class="badge bg-info">akan datang</span>') + '</div></div>' +
+      '<button class="btn btn-sm btn-outline-danger" title="Hapus" data-k="' + esc(x.tgl) + '" onclick="hapusLibur(this.dataset.k)"><i class="bi bi-trash"></i></button></div>';
+  }).join('') + '</div>' : '<div class="text-muted small">Belum ada tanggal libur. Tambahkan secara manual atau ambil dari Kalender Google.</div>';
+  var y = today.getFullYear(), cur = $('lbTahun').value;
+  $('lbTahun').innerHTML = [y, y + 1].map(function(v){ return '<option>' + v + '</option>'; }).join(''); if (cur) $('lbTahun').value = cur;
+}
+function kirimLibur(){
+  return call('simpanLibur', {hariKerja: LIBUR.hariKerja, boleh: LIBUR.boleh, daftar: LIBUR.daftar})
+    .then(function(r){ LIBUR = r; renderLibur(); toast('Pengaturan hari libur tersimpan.', 'success'); })
+    .catch(function(e){ toast(e.message); loadLibur(); });
+}
+function ubahHariKerja(){
+  var hk = []; for (var d = 1; d <= 7; d++) if ($('hk' + d).checked) hk.push(d);
+  if (!hk.length) { toast('Minimal pilih satu hari kerja.', 'warning'); renderLibur(); return; }
+  LIBUR.hariKerja = hk; kirimLibur();
+}
+function ubahBoleh(el){ LIBUR.boleh = el.checked; kirimLibur(); }
+function tambahLibur(btn){ run(btn, function(){
+  var t = $('lbTgl').value, k = $('lbKet').value.trim().replace(/\s+/g, ' ') || 'Libur';
+  if (!t) throw new Error('Pilih tanggal libur terlebih dahulu.');
+  if (LIBUR.daftar.some(function(x){ return x.tgl === t; })) throw new Error('Tanggal itu sudah ada di daftar.');
+  LIBUR.daftar.push({tgl: t, ket: k});
+  return kirimLibur().then(function(){ $('lbTgl').value = ''; $('lbKet').value = ''; });
+}); }
+function hapusLibur(tgl){
+  if (!confirm('Hapus libur tanggal ' + tglHari(tgl) + '?')) return;
+  LIBUR.daftar = LIBUR.daftar.filter(function(x){ return x.tgl !== tgl; }); kirimLibur();
+}
+function previewLibur(btn){ run(btn, function(){
+  return call('previewLiburGoogle', {tahun: $('lbTahun').value}).then(function(r){ GPREV = r; renderPreview(); });
+}); }
+function renderPreview(){
+  var box = $('lbPreview');
+  if (!GPREV.length) { box.innerHTML = '<div class="alert alert-warning small mb-0">Tidak ada hari libur ditemukan untuk tahun itu.</div>'; return; }
+  box.innerHTML = '<div class="small text-muted mb-1">Centang hanya yang benar-benar <b>tanggal merah</b> (libur nasional atau cuti bersama). Kalender Google juga memuat hari peringatan yang bukan libur.</div>' +
+    '<div class="list-group mb-2" style="max-height:300px;overflow:auto">' + GPREV.map(function(x, i){
+      return '<label class="list-group-item d-flex gap-2 align-items-start"><input class="form-check-input mt-1" type="checkbox" data-i="' + i + '"' + (x.centang && !x.sudah ? ' checked' : '') + (x.sudah ? ' disabled' : '') + '>' +
+        '<span><b class="small">' + esc(tglHari(x.tgl)) + '</b><br>' + esc(x.ket) + (x.sudah ? ' <span class="badge bg-secondary">sudah ada</span>' : '') + (x.catatan ? '<div class="small text-muted">' + esc(x.catatan) + '</div>' : '') + '</span></label>';
+    }).join('') + '</div><button class="btn btn-pri btn-sm" onclick="tambahDariPreview(this)"><i class="bi bi-plus-lg"></i> Tambahkan yang dicentang</button>';
+}
+function tambahDariPreview(btn){ run(btn, function(){
+  var baru = [];
+  document.querySelectorAll('#lbPreview input[data-i]:checked').forEach(function(c){ baru.push(GPREV[parseInt(c.dataset.i, 10)]); });
+  if (!baru.length) throw new Error('Belum ada yang dicentang.');
+  baru.forEach(function(x){ if (!LIBUR.daftar.some(function(d){ return d.tgl === x.tgl; })) LIBUR.daftar.push({tgl: x.tgl, ket: x.ket}); });
+  return kirimLibur().then(function(){ $('lbPreview').innerHTML = ''; });
+}); }
 var SEKOLAH = [];
 function renderSekolah(){
   $('sekolahBox').innerHTML = SEKOLAH.length ? '<ul class="list-group">' + SEKOLAH.map(function(n, i){
