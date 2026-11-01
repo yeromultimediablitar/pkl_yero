@@ -484,6 +484,8 @@ body{word-spacing:.06em}
     <div class="card p-3 mt-3">
       <div class="fw-bold fs-5 mb-1">Daftar Asal Sekolah</div>
       <div class="small text-muted mb-2">Pilihan dropdown "Asal Sekolah" di profil siswa. Perubahan langsung tersimpan.</div>
+      <div class="form-check form-switch mb-1"><input class="form-check-input" type="checkbox" id="swUrutAZ" onchange="ubahUrutSekolah(this)"><label class="form-check-label small" for="swUrutAZ">Urutkan otomatis A–Z</label></div>
+      <div class="small text-muted mb-2">Jika mati, atur urutan sendiri dengan tombol panah. Jika menyala, daftar selalu urut abjad (angka diurutkan sebagai angka: SMKN 2 sebelum SMKN 10).</div>
       <div class="input-group mb-2"><input id="sekolahBaru" class="form-control" maxlength="60" placeholder="Nama sekolah baru, contoh: SMKN 2 Blitar"><button class="btn btn-pri" onclick="tambahSekolah(this)"><i class="bi bi-plus-lg"></i> Tambah</button></div>
       <div id="sekolahBox"></div>
     </div>
@@ -1185,6 +1187,16 @@ function openEditSub(id){
   new bootstrap.Modal('#mdlEdit').show();
 }
 function simpanEdit(btn){ run(btn, function(){
+  if (ED.t === 'sekolah') {
+    var baru = $('edNama').value.trim().replace(/\s+/g, ' ');
+    if (!baru) throw new Error('Nama sekolah tidak boleh kosong.');
+    if (baru.toLowerCase() !== ED.lama.toLowerCase() && SEKOLAH.some(function(x){ return x.toLowerCase() === baru.toLowerCase(); })) throw new Error('Sudah ada sekolah dengan nama itu.');
+    var list = SEKOLAH.map(function(x){ return x === ED.lama ? baru : x; });
+    return simpanDaftarSekolah(list, {ganti: {lama: ED.lama, baru: baru}}).then(function(r){
+      toast('Nama sekolah diubah' + (r.diubah ? ' (' + r.diubah + ' siswa ikut diperbarui)' : '') + '.', 'success');
+      bootstrap.Modal.getInstance($('mdlEdit')).hide();
+    });
+  }
   var p = ED.t === 'materi' ? call('editMateri', {kode: ED.kode, nama: $('edNama').value, jurusan: $('edJur').value}) : call('editSub', {id: ED.id, nama: $('edNama').value});
   return p.then(function(m){ toast(m, 'success'); bootstrap.Modal.getInstance($('mdlEdit')).hide(); loadNilaiTab(); });
 }); }
@@ -1379,7 +1391,7 @@ function renderStat(){
 var SHIFT_F = [['PAGI_MASUK', 'Batas masuk – Kantor Pagi'], ['PAGI_PULANG', 'Jam pulang – Kantor Pagi'], ['SIANG_MASUK', 'Batas masuk – Kantor Siang'], ['SIANG_PULANG', 'Jam pulang – Kantor Siang']];
 function loadShift(){
   call('getPengaturan').then(function(s){
-    SEKOLAH = String(s.DAFTAR_SEKOLAH || '').split('|').filter(Boolean); renderSekolah();
+    SEKOLAH = String(s.DAFTAR_SEKOLAH || '').split('|').filter(Boolean); SEK_URUT = s.SEKOLAH_URUT === 'AZ' ? 'AZ' : 'MANUAL'; renderSekolah();
     $('shiftForm').innerHTML = SHIFT_F.map(function(f){ return '<div class="col-6 col-md-4"><label class="small fw-semibold">' + f[1] + '</label><input type="time" data-k="' + f[0] + '" class="form-control" value="' + esc(s[f[0]]) + '"></div>'; }).join('') +
       '<div class="col-6 col-md-4"><label class="small fw-semibold">Latitude kantor</label><input data-k="LAT_KANTOR" id="sLat" class="form-control" value="' + esc(s.LAT_KANTOR) + '"></div>' +
       '<div class="col-6 col-md-4"><label class="small fw-semibold">Longitude kantor</label><input data-k="LON_KANTOR" id="sLon" class="form-control" value="' + esc(s.LON_KANTOR) + '"></div>' +
@@ -1450,14 +1462,30 @@ function tambahDariPreview(btn){ run(btn, function(){
   baru.forEach(function(x){ if (!LIBUR.daftar.some(function(d){ return d.tgl === x.tgl; })) LIBUR.daftar.push({tgl: x.tgl, ket: x.ket}); });
   return kirimLibur().then(function(){ $('lbPreview').innerHTML = ''; });
 }); }
-var SEKOLAH = [];
+var SEKOLAH = [], SEK_URUT = 'MANUAL', SEK_T = null;
+function urutAlami(a, b){
+  var ta = String(a).toLowerCase().match(/\d+|\D+/g) || [], tb = String(b).toLowerCase().match(/\d+|\D+/g) || [];
+  for (var i = 0; i < Math.min(ta.length, tb.length); i++) {
+    var x = ta[i], y = tb[i];
+    if (/^\d/.test(x) && /^\d/.test(y)) { var d = parseInt(x, 10) - parseInt(y, 10); if (d) return d; }
+    else if (x !== y) return x < y ? -1 : 1;
+  }
+  return ta.length - tb.length;
+}
+function tampilSekolah(){ return SEK_URUT === 'AZ' ? SEKOLAH.slice().sort(urutAlami) : SEKOLAH; }
 function renderSekolah(){
-  $('sekolahBox').innerHTML = SEKOLAH.length ? '<ul class="list-group">' + SEKOLAH.map(function(n, i){
-    return '<li class="list-group-item d-flex justify-content-between align-items-center"><span>' + esc(n) + '</span><button class="btn btn-sm btn-outline-danger" onclick="hapusSekolah(' + i + ')"><i class="bi bi-trash"></i></button></li>';
+  var az = SEK_URUT === 'AZ', L = tampilSekolah();
+  $('swUrutAZ').checked = az;
+  $('sekolahBox').innerHTML = L.length ? '<ul class="list-group">' + L.map(function(n, i){
+    return '<li class="list-group-item d-flex align-items-center gap-2"><span class="flex-grow-1">' + esc(n) + '</span>' +
+      '<div class="btn-group btn-group-sm"><button class="btn btn-outline-secondary" title="Naikkan" ' + (az || i === 0 ? 'disabled' : '') + ' onclick="geserSekolah(' + i + ',-1)"><i class="bi bi-arrow-up"></i></button>' +
+      '<button class="btn btn-outline-secondary" title="Turunkan" ' + (az || i === L.length - 1 ? 'disabled' : '') + ' onclick="geserSekolah(' + i + ',1)"><i class="bi bi-arrow-down"></i></button></div>' +
+      '<button class="btn btn-sm btn-outline-primary" title="Edit nama" data-n="' + esc(n) + '" onclick="editSekolah(this.dataset.n)"><i class="bi bi-pencil"></i></button>' +
+      '<button class="btn btn-sm btn-outline-danger" title="Hapus" data-n="' + esc(n) + '" onclick="hapusSekolah(this.dataset.n)"><i class="bi bi-trash"></i></button></li>';
   }).join('') + '</ul>' : '<div class="text-muted small">Belum ada sekolah.</div>';
 }
-function simpanDaftarSekolah(list){
-  return call('simpanSekolah', {list: list}).then(function(r){ SEKOLAH = r; renderSekolah(); });
+function simpanDaftarSekolah(list, opsi){
+  return call('simpanSekolah', {list: list, urut: SEK_URUT, ganti: opsi && opsi.ganti}).then(function(r){ SEKOLAH = r.list; SEK_URUT = r.urut; renderSekolah(); return r; });
 }
 function tambahSekolah(btn){ run(btn, function(){
   var n = $('sekolahBaru').value.trim().replace(/\s+/g, ' ');
@@ -1465,10 +1493,26 @@ function tambahSekolah(btn){ run(btn, function(){
   if (SEKOLAH.some(function(x){ return x.toLowerCase() === n.toLowerCase(); })) throw new Error('Sekolah sudah ada di daftar.');
   return simpanDaftarSekolah(SEKOLAH.concat([n])).then(function(){ $('sekolahBaru').value = ''; toast('Sekolah ditambahkan.', 'success'); });
 }); }
-function hapusSekolah(i){
+function hapusSekolah(nama){
   if (SEKOLAH.length <= 1) { toast('Minimal harus ada satu sekolah.', 'warning'); return; }
-  if (!confirm('Hapus "' + SEKOLAH[i] + '" dari pilihan? Siswa yang sudah memilihnya tidak terhapus datanya.')) return;
-  simpanDaftarSekolah(SEKOLAH.filter(function(_, k){ return k !== i; })).then(function(){ toast('Sekolah dihapus dari pilihan.', 'success'); }).catch(function(e){ toast(e.message); });
+  if (!confirm('Hapus "' + nama + '" dari pilihan? Siswa yang sudah memilihnya tidak terhapus datanya.')) return;
+  simpanDaftarSekolah(SEKOLAH.filter(function(x){ return x !== nama; })).then(function(){ toast('Sekolah dihapus dari pilihan.', 'success'); }).catch(function(e){ toast(e.message); });
+}
+function geserSekolah(i, d){ // urutan manual: tukar posisi lalu simpan (disatukan bila diklik cepat berturut-turut)
+  var j = i + d; if (SEK_URUT === 'AZ' || j < 0 || j >= SEKOLAH.length) return;
+  var t = SEKOLAH[i]; SEKOLAH[i] = SEKOLAH[j]; SEKOLAH[j] = t; renderSekolah();
+  clearTimeout(SEK_T);
+  SEK_T = setTimeout(function(){ simpanDaftarSekolah(SEKOLAH).catch(function(e){ toast(e.message); loadShift(); }); }, 600);
+}
+function ubahUrutSekolah(el){
+  var lama = SEK_URUT; SEK_URUT = el.checked ? 'AZ' : 'MANUAL'; renderSekolah();
+  simpanDaftarSekolah(SEKOLAH).then(function(){ toast(SEK_URUT === 'AZ' ? 'Daftar sekolah kini urut A–Z otomatis.' : 'Urutan manual aktif.', 'success'); })
+    .catch(function(e){ SEK_URUT = lama; renderSekolah(); toast(e.message); });
+}
+function editSekolah(nama){
+  ED = {t: 'sekolah', lama: nama};
+  $('edJudul').textContent = 'Edit Nama Sekolah'; $('edLbl').textContent = 'Nama Sekolah'; $('edJurBox').classList.add('d-none'); $('edNama').value = nama;
+  new bootstrap.Modal('#mdlEdit').show();
 }
 function unduhBackup(btn, jenis){ run(btn, function(){
   $('backupInfo').innerHTML = '<span class="text-muted">Menyiapkan file, mohon tunggu (bisa sampai setengah menit)…</span>';
